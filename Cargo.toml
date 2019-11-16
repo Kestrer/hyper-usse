@@ -1,0 +1,19 @@
+[package]
+name = "hyper-usse"
+description = "SSE (Server Sent Events) server library for Hyper, simpler than hyper-sse."
+version = "0.1.0"
+authors = ["Koxiaet <38139193+Koxiaet@users.noreply.github.com>"]
+edition = "2018"
+documentation = "https://docs.rs/hyper-usse"
+repository = "https://github.com/koxiaet/hyper-usse"
+readme = "README.md"
+license = "Apache-2.0/MIT"
+
+[dependencies]
+hyper = "0.13.0-alpha.4"
+futures = "0.3.1"
+
+[dev-dependencies]
+tokio = "0.2.0-alpha.6"
+futures-locks = "0.5.0"
+futures = { version = "0.3.1", features = ["compat"] }
