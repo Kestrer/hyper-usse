@@ -1,13 +1,15 @@
 // Example of a website built with SSE.
-use futures::compat::Future01CompatExt;
+//
+// Go to http://localhost:8000/.
 use futures::future;
-use futures_locks::Mutex;
+use futures::stream::StreamExt;
 use hyper::service::{make_service_fn, service_fn};
 use hyper::{Body, Method, Request, Response};
 use hyper_usse::Event;
+use std::sync::Arc;
 use std::time::Duration;
-use tokio::prelude::*;
-use tokio::timer::Interval;
+use tokio::sync::Mutex;
+use tokio::time;
 
 const HTML: &str = r#"
 <!DOCTYPE html>
@@ -17,6 +19,7 @@ const HTML: &str = r#"
         <meta charset="utf-8" />
     </head>
     <body>
+        <h1>hyper-usse demo</h1>
         <ul id="list"></ul>
         <script>
 let server = new EventSource("http://localhost:8000/sse");
@@ -31,14 +34,14 @@ server.onmessage = event => {
 </html>"#;
 
 async fn process_request(
-    sse: Mutex<hyper_usse::Server>,
+    sse: Arc<Mutex<hyper_usse::Server>>,
     request: Request<Body>,
 ) -> Result<Response<Body>, hyper::Error> {
     let result = match (request.method(), request.uri().path()) {
         (&Method::GET, "/") => Response::new(Body::from(HTML)),
         (&Method::GET, "/sse") => {
             let (channel, body) = Body::channel();
-            sse.lock().compat().await.unwrap().add_client(channel);
+            sse.lock().await.add_client(channel);
             Response::builder()
                 .header("Content-Type", "text/event-stream")
                 .header("Cache-Control", "no-cache")
@@ -55,30 +58,27 @@ async fn process_request(
 
 #[tokio::main]
 async fn main() {
-    let sse = Mutex::new(hyper_usse::Server::new());
+    let sse = Arc::new(Mutex::new(hyper_usse::Server::new()));
 
     let server = hyper::Server::bind(&([127, 0, 0, 1], 8000).into()).serve(make_service_fn(|_| {
-        let sse = Mutex::clone(&sse);
+        let sse = Arc::clone(&sse);
 
         async move {
             Ok::<_, hyper::Error>(service_fn(move |request: Request<Body>| {
-                process_request(Mutex::clone(&sse), request)
+                process_request(Arc::clone(&sse), request)
             }))
         }
     }));
 
-    let events = Interval::new_interval(Duration::from_secs(3))
-        .for_each(|_| {
-            async {
-                println!("Sending message...");
-                sse.lock()
-                    .compat()
-                    .await
-                    .unwrap()
-                    .send_to_clients(&Event::new("Some data").to_sse())
-                    .await;
-            }
-        });
+    let events = time::interval(Duration::from_secs(3)).for_each(|_| {
+        async {
+            println!("Sending message...");
+            sse.lock()
+                .await
+                .send_to_clients(Event::new("Some data").to_sse())
+                .await;
+        }
+    });
 
     if let Err(err) = future::join(server, events).await.0 {
         eprintln!("Server error: {}", err);
