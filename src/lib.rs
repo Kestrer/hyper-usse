@@ -12,15 +12,18 @@ use std::fmt::{self, Display, Formatter};
 /// # Examples
 /// Build an event with just data:
 /// ```
-/// EventBuilder::new("Data").build()
+/// # use hyper_usse::EventBuilder;
+/// EventBuilder::new("Data").build();
 /// ```
 /// Build an event with an ID:
 /// ```
-/// EventBuilder::new("Data").id("Id").build()
+/// # use hyper_usse::EventBuilder;
+/// EventBuilder::new("Data").id("Id").build();
 /// ```
 /// Build an event with an event type:
 /// ```
-/// EventBuilder::new("Data").event_type("update").build()
+/// # use hyper_usse::EventBuilder;
+/// EventBuilder::new("Data").event_type("update").build();
 /// ```
 ///
 /// Because `EventBuilder` implements `Into<Bytes>` you don't have to call `build` to pass it to
