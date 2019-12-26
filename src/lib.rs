@@ -105,4 +105,13 @@ impl Server {
     pub async fn send_heartbeat(&mut self) {
         self.send_to_clients(":\n\n").await
     }
+
+    /// Count the number of currently held connections. Note that this may be an
+    /// over-estimate of the number of currently connected clients, as some
+    /// clients may have disconnected since the last `send_to_clients` or
+    /// `send_heartbeat` (both of which prune the list of connections to those
+    /// which still have a connected client).
+    pub fn connections(&self) -> usize {
+        self.clients.len()
+    }
 }
