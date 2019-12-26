@@ -1,17 +1,17 @@
 [package]
 name = "hyper-usse"
 description = "SSE (Server Sent Events) server library for Hyper, simpler than hyper-sse."
-version = "0.2.0"
+version = "0.3.0"
 authors = ["Koxiaet <38139193+Koxiaet@users.noreply.github.com>"]
 edition = "2018"
 documentation = "https://docs.rs/hyper-usse"
 repository = "https://github.com/koxiaet/hyper-usse"
 readme = "README.md"
-license = "Apache-2.0/MIT"
+license = "MIT OR Apache-2.0"
 
 [dependencies]
 hyper = "0.13.1"
 futures = "0.3.1"
 
 [dev-dependencies]
-tokio = { version = "0.2.4", features = ["time", "macros", "sync", "stream"] }
+tokio = { version = "0.2.6", features = ["time", "macros", "sync", "stream", "io-util", "io-std"] }

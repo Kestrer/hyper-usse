@@ -1,11 +1,9 @@
 // Example of a website built with SSE.
-//
-// Go to http://localhost:8000/.
 use futures::future;
 use futures::stream::StreamExt;
 use hyper::service::{make_service_fn, service_fn};
 use hyper::{Body, Method, Request, Response};
-use hyper_usse::Event;
+use hyper_usse::EventBuilder;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::Mutex;
@@ -15,11 +13,12 @@ const HTML: &str = r#"
 <!DOCTYPE html>
 <html>
     <head>
-        <title>hyper-usse demo</title>
+        <title>Hyper-usse Demo</title>
         <meta charset="utf-8" />
     </head>
     <body>
-        <h1>hyper-usse demo</h1>
+        <h1>Hyper-usse Demo</h1>
+        <p>Incoming events:</p>
         <ul id="list"></ul>
         <script>
 let server = new EventSource("http://localhost:8000/sse");
@@ -75,10 +74,12 @@ async fn main() {
             println!("Sending message...");
             sse.lock()
                 .await
-                .send_to_clients(Event::new("Some data").to_sse())
+                .send_to_clients(EventBuilder::new("Some data"))
                 .await;
         }
     });
+
+    println!("Go to http://localhost:8000/.");
 
     if let Err(err) = future::join(server, events).await.0 {
         eprintln!("Server error: {}", err);

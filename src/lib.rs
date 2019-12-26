@@ -1,70 +1,108 @@
 //! A library for an SSE (server sent events) server, for use with Hyper.
 //!
-//! Start a server with `Server`, and use `Event` to generate events to send with `Server`. See the
-//! [README](https://github.com/koxiaet/hyper-usse/blob/master/README.md) for more, and
-//! [examples](https://github.com/koxiaet/hyper-usse/tree/master/examples) for usage examples.
+//! Start a server with `Server`, and use `EventBuilder` to generate events to send with `Server`.
+//! See [examples](https://github.com/koxiaet/hyper-usse/tree/master/examples) for usage examples.
 use futures::future;
 use hyper::body::{Bytes, Sender};
-use std::borrow::Cow;
+use std::mem;
+use std::fmt::{self, Display, Formatter};
 
-/// A server sent event.
-///
-/// The fields `id`, `event` and `data` set the `id`, `event` and `data` parameters for the event
-/// respectively. `id` and `event` are optional. To convert it to an SSE string, use the `to_sse`
-/// function.
+/// A struct used to build server sent events.
 ///
 /// # Examples
+/// Build an event with just data:
 /// ```
-/// let event = hyper_usse::Event::new("some text\nmore text").set_id("1").set_event("send_text");
-/// assert_eq!(event.to_sse(), "id: 1
-/// event: send_text
-/// data: some text
-/// data: more text\n\n");
+/// EventBuilder::new("Data").build()
 /// ```
-#[derive(Debug, Default)]
-pub struct Event {
-    pub id: Option<Cow<'static, str>>,
-    pub event: Option<Cow<'static, str>>,
-    pub data: Cow<'static, str>,
+/// Build an event with an ID:
+/// ```
+/// EventBuilder::new("Data").id("Id").build()
+/// ```
+/// Build an event with an event type:
+/// ```
+/// EventBuilder::new("Data").event_type("update").build()
+/// ```
+///
+/// Because `EventBuilder` implements `Into<Bytes>` you don't have to call `build` to pass it to
+/// the server.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct EventBuilder<'data, 'id, 'event> {
+    pub data: &'data str,
+    pub id: Option<&'id str>,
+    pub event_type: Option<&'event str>,
 }
 
-impl Event {
-    /// Creates a new Event from data.
-    pub fn new<T: Into<Cow<'static, str>>>(data: T) -> Self {
-        Event {
+impl<'data, 'id, 'event> EventBuilder<'data, 'id, 'event> {
+    /// Create a new builder with data, no id and no event type.
+    pub fn new(data: &'data str) -> Self {
+        Self {
+            data,
             id: None,
-            event: None,
-            data: data.into(),
+            event_type: None,
         }
     }
-
-    /// Sets the id of the event. As it returns `self`, it is useful for creating an event inline.
-    pub fn set_id<T: Into<Cow<'static, str>>>(mut self, id: T) -> Self {
-        self.id = Some(id.into());
+    /// Set the data.
+    pub fn data(mut self, data: &'data str) -> Self {
+        self.data = data;
         self
     }
-
-    /// Sets the event type of the event. Like `set_id`, it returns `self` and so can easily be
-    /// chained.
-    pub fn set_event<T: Into<Cow<'static, str>>>(mut self, event: T) -> Self {
-        self.event = Some(event.into());
+    /// Set the event id.
+    pub fn id(mut self, id: &'id str) -> Self {
+        self.id = Some(id);
         self
     }
-
-    /// Converts the Event to an SSE string.
-    pub fn to_sse(&self) -> String {
-        let mut sse = String::new();
-        if let Some(id) = &self.id {
-            sse.push_str(&format!("id: {}\n", id));
+    /// Set the event type.
+    pub fn event_type(mut self, event_type: &'event str) -> Self {
+        self.event_type = Some(event_type);
+        self
+    }
+    /// Clear the event id.
+    pub fn clear_id(mut self) -> Self {
+        self.id = None;
+        self
+    }
+    /// Clear the event type.
+    pub fn clear_type(mut self) -> Self {
+        self.event_type = None;
+        self
+    }
+    /// Build the event.
+    pub fn build(self) -> String {
+        let mut event = String::with_capacity(
+            self.id.map(|id| 5 + id.len()).unwrap_or(0) +
+            self.event_type.map(|event| 8 + event.len()).unwrap_or(0) +
+            self.data.lines().count()*6 + self.data.len() +
+            1
+        );
+        if let Some(id) = self.id {
+            event.push_str("id: ");
+            event.push_str(id);
+            event.push('\n');
         }
-        if let Some(event) = &self.event {
-            sse.push_str(&format!("event: {}\n", event));
+        if let Some(event_type) = self.event_type {
+            event.push_str("event: ");
+            event.push_str(event_type);
+            event.push('\n');
         }
         for line in self.data.lines() {
-            sse.push_str(&format!("data: {}\n", line));
+            event.push_str("data: ");
+            event.push_str(line);
+            event.push('\n');
         }
-        sse.push('\n');
-        sse
+        event.push('\n');
+        event
+    }
+}
+
+impl<'data, 'id, 'event> Display for EventBuilder<'data, 'id, 'event> {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+        f.write_str(&self.build())
+    }
+}
+
+impl<'data, 'id, 'event> Into<Bytes> for EventBuilder<'data, 'id, 'event> {
+    fn into(self) -> Bytes {
+        self.build().into()
     }
 }
 
@@ -87,30 +125,41 @@ impl Server {
         self.clients.push(client);
     }
 
-    /// Send some text to the clients. Most often, this text is generated by calling `to_sse` on an
-    /// [Event](struct.Event.html).
-    pub async fn send_to_clients<B: Into<Bytes>>(&mut self, text: B) {
+    /// Send some text to the clients. Most often, this text is made using an
+    /// [EventBuilder](struct.EventBuilder.html). This will automatically remove all disconnected
+    /// clients.
+    ///
+    /// This function returns the number of currently connected clients.
+    pub async fn send_to_clients<B: Into<Bytes>>(&mut self, text: B) -> usize {
         let bytes = text.into();
         let mut sent = future::join_all(self.clients.iter_mut().map(|client| {
             let bytes = Bytes::clone(&bytes);
             async move { client.send_data(bytes).await.is_ok() }
-        }))
-        .await
-        .into_iter();
+        })).await.into_iter();
         self.clients.retain(|_| sent.next().unwrap());
+        self.clients.len()
     }
 
     /// Send a heartbeat (empty SSE) to all clients. This does not perform any action, but will
     /// prevent your connection being timed out for lasting too long without any data being sent.
-    pub async fn send_heartbeat(&mut self) {
+    ///
+    /// This function returns the number of currently connected clients.
+    pub async fn send_heartbeat(&mut self) -> usize {
         self.send_to_clients(":\n\n").await
     }
 
-    /// Count the number of currently held connections. Note that this may be an
-    /// over-estimate of the number of currently connected clients, as some
-    /// clients may have disconnected since the last `send_to_clients` or
-    /// `send_heartbeat` (both of which prune the list of connections to those
-    /// which still have a connected client).
+    /// Disconnect all clients that are currently connected to the server.
+    pub fn disconnect_all(&mut self) {
+        for client in mem::replace(&mut self.clients, Vec::new()) {
+            client.abort();
+        }
+    }
+
+    /// Count the number of currently held connections.
+    ///
+    /// Note that this may be an over-estimate of the number of currently connected clients, as
+    /// some clients may have disconnected since the last `send_to_clients` or `send_heartbeat`
+    /// (both of which prune the list of connections to those which still have a connected client).
     pub fn connections(&self) -> usize {
         self.clients.len()
     }
