@@ -136,7 +136,7 @@ impl Server {
     pub async fn send_to_clients<B: Into<Bytes>>(&mut self, text: B) -> usize {
         let bytes = text.into();
         let mut sent = future::join_all(self.clients.iter_mut().map(|client| {
-            let bytes = Bytes::clone(&bytes);
+            let bytes = bytes.slice(..);
             async move { client.send_data(bytes).await.is_ok() }
         })).await.into_iter();
         self.clients.retain(|_| sent.next().unwrap());

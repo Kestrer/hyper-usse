@@ -97,7 +97,7 @@ async fn command_loop(
             }
             _ => println!("Unknown command {}.", command),
         }
-    } 
+    }
 }
 
 #[tokio::main]
