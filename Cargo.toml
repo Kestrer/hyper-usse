@@ -1,7 +1,7 @@
 [package]
 name = "hyper-usse"
 description = "SSE (Server Sent Events) server library for Hyper, simpler than hyper-sse."
-version = "0.3.1"
+version = "0.3.2"
 authors = ["Koxiaet <38139193+Koxiaet@users.noreply.github.com>"]
 edition = "2018"
 documentation = "https://docs.rs/hyper-usse"
